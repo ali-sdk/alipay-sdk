@@ -4,9 +4,7 @@ require('should');
 const fs = require('fs');
 const path = require('path');
 const sinon = require('sinon');
-const urllib = require('urllib');
 const moment = require('moment');
-const request = require('request');
 
 const FormData = require('../lib/form').default;
 const AlipaySdk = require('../lib/alipay').default;
@@ -15,7 +13,7 @@ const alipayPublicKey = fs.readFileSync(__dirname + '/fixtures/alipay-public-key
 const notifyAlipayPublicKeyV1 = fs.readFileSync(__dirname + '/fixtures/alipay-notify-sign-public-key-v1.pem', 'ascii');
 const notifyAlipayPublicKeyV2 = fs.readFileSync(__dirname + '/fixtures/alipay-notify-sign-public-key-v2.pem', 'ascii');
 
-const sandbox = sinon.sandbox.create();
+const sandbox = sinon.createSandbox();
 const pkgJson = require('../package.json');
 const sdkVersion = `alipay-sdk-nodejs-${pkgJson.version}`;
 
@@ -96,11 +94,7 @@ describe('sdk', function() {
     });
 
     it('request error.', function (done) {
-      sandbox.stub(urllib, 'request', function() {
-        return new Promise(function() {
-          throw Error('custom error.');
-        });
-      });
+      sandbox.stub(sdk, 'postString').rejects(new Error('custom error.'));
 
       sdk.exec('alipay.security.risk.content.analyze', {
         bizContent: {
@@ -115,8 +109,9 @@ describe('sdk', function() {
     });
 
     it('status not 200', function (done) {
-      sandbox.stub(urllib, 'request', function() {
-        return Promise.resolve({ status: 503 })
+      sandbox.stub(sdk, 'postString').rejects({
+        status: 503,
+        text: sinon.stub().resolves("myerror")
       });
 
       sdk.exec('alipay.security.risk.content.analyze', {
@@ -127,7 +122,7 @@ describe('sdk', function() {
         }
       }).catch(function(err){
         err.should.eql({
-            serverResult: { status: 503 },
+            serverResult: { status: 503, data: "myerror" },
             errorMessage: '[AlipaySdk]HTTP 请求错误'
         });
         done();
@@ -135,13 +130,9 @@ describe('sdk', function() {
     });
 
     it('validateSign error', function(done) {
-      sandbox.stub(urllib, 'request', function() {
-        return Promise.resolve({
-          status: 200,
-          data: '{"alipay_security_risk_content_analyze_response":{"a":1,"b":2},"sign":"signStr"}',
-        });
-      });
-      sandbox.stub(sdk, 'checkResponseSign', function() { return false; });
+      sandbox.stub(sdk, 'postString')
+        .resolves('{"alipay_security_risk_content_analyze_response":{"a":1,"b":2},"sign":"signStr"}');
+      sandbox.stub(sdk, 'checkResponseSign').returns(false);
 
       sdk.exec('alipay.security.risk.content.analyze', {
         bizContent: {
@@ -163,13 +154,9 @@ describe('sdk', function() {
     });
 
     it('config.camelcase is true', function(done) {
-      sandbox.stub(urllib, 'request', function() {
-        return Promise.resolve({
-          status: 200,
-          data: '{"alipay_security_risk_content_analyze_response":{"a_b":1,"c_d":2},"sign":"signStr"}',
-        });
-      });
-      sandbox.stub(sdk, 'checkResponseSign', function() { return true; });
+      sandbox.stub(sdk, 'postString')
+        .resolves('{"alipay_security_risk_content_analyze_response":{"a_b":1,"c_d":2},"sign":"signStr"}');
+      sandbox.stub(sdk, 'checkResponseSign').returns(true);
 
       sdk.exec('alipay.security.risk.content.analyze', {
         bizContent: {
@@ -192,13 +179,9 @@ describe('sdk', function() {
         alipayPublicKey,
         camelcase: false,
       });
-      sandbox.stub(urllib, 'request', function() {
-        return Promise.resolve({
-          status: 200,
-          data: '{"alipay_security_risk_content_analyze_response":{"a_b":1,"c_d":2},"sign":"signStr"}',
-        })
-      });
-      sandbox.stub(alipaySdk, 'checkResponseSign', function() { return true; });
+      sandbox.stub(alipaySdk, 'postString')
+        .resolves('{"alipay_security_risk_content_analyze_response":{"a_b":1,"c_d":2},"sign":"signStr"}');
+      sandbox.stub(alipaySdk, 'checkResponseSign').returns(true);
 
       const result = alipaySdk.exec('alipay.security.risk.content.analyze', {
         bizContent: {
@@ -214,12 +197,8 @@ describe('sdk', function() {
     });
 
     it('NO_RIGHT Api', function(done) {
-      sandbox.stub(urllib, 'request', function() {
-        return Promise.resolve({
-          status: 200,
-          data: '{"alipay_commerce_cityfacilitator_station_query_response":{"code":"40004","msg":"Business Failed","subCode":"NO_RIGHT","subMsg":"无权限使用接口"},"sign":"signStr"}',
-        })
-      });
+      sandbox.stub(sdk, 'postString')
+        .resolves('{"alipay_commerce_cityfacilitator_station_query_response":{"code":"40004","msg":"Business Failed","subCode":"NO_RIGHT","subMsg":"无权限使用接口"},"sign":"signStr"}');
 
       sdk
         .exec('alipay.commerce.cityfacilitator.station.query', {
@@ -277,11 +256,7 @@ describe('sdk', function() {
         info(...args) { infoLog.push(args.join('')) },
         error(...args) { errorLog.push(args.join('')) },
       }
-      sandbox.stub(urllib, 'request', function() {
-        return new Promise(function() {
-          throw Error('custom error.');
-        });
-      });
+      sandbox.stub(sdk, 'postString').rejects(new Error('custom error.'));
 
       sdk
         .exec('alipay.security.risk.content.analyze', {
@@ -311,13 +286,9 @@ describe('sdk', function() {
     });
 
     it('error response', function(done) {
-      sandbox.stub(urllib, 'request', function() {
-        return Promise.resolve({
-          status: 200,
-          data: '{"error_response":{"code":"40002","msg":"Invalid Arguments","sub_code":"isv.code-invalid","sub_msg":"授权码code无效"}}',
-        });
-      });
-      sandbox.stub(sdk, 'checkResponseSign', function() { return true; });
+      sandbox.stub(sdk, 'postString')
+        .resolves('{"error_response":{"code":"40002","msg":"Invalid Arguments","sub_code":"isv.code-invalid","sub_msg":"授权码code无效"}}');
+      sandbox.stub(sdk, 'checkResponseSign').returns(true);
 
       sdk.exec('alipay.security.risk.content.analyze', {
         bizContent: {
@@ -438,10 +409,8 @@ describe('sdk', function() {
       form.addField('imageName', '海底捞.jpg');
       form.addFile('imageContent', '海底捞.jpg', filePath);
 
-      sandbox.stub(sdk, 'checkResponseSign', function() { return false; });
-      sandbox.stub(request, 'post', function(option, callback) {
-        return callback(null, {} , '{"alipay_offline_material_image_upload_response":{"a":"b"}}');
-      });
+      sandbox.stub(sdk, 'checkResponseSign').returns(false);
+      sandbox.stub(sdk, 'postString').resolves('{"alipay_offline_material_image_upload_response":{"a":"b"}}');
 
       sdk
         .exec('alipay.offline.material.image.upload', {
@@ -471,9 +440,7 @@ describe('sdk', function() {
       form.addField('imageName', '海底捞.jpg');
       form.addFile('imageContent', '海底捞.jpg', filePath);
 
-      sandbox.stub(request, 'post', function(option, callback) {
-        return callback({ error: 'custom error.' }, {} , '{"a":"b"}');
-      });
+      sandbox.stub(sdk, "postString").rejects({ error: 'custom error.' });
 
       sdk
         .exec('alipay.offline.material.image.upload', {
@@ -502,10 +469,10 @@ describe('sdk', function() {
       form.addField('imageName', '海底捞.jpg');
       form.addFile('imageContent', '海底捞.jpg', filePath);
 
-      sandbox.stub(sdk, 'checkResponseSign', function() { return false; });
-      sandbox.stub(request, 'post', function(option, callback) {
-        return callback(null, {} , '{"error_response":{"code":"40002","msg":"Invalid Arguments","sub_code":"isv.code-invalid","sub_msg":"授权码code无效"}}');
-      });
+      const response = '{"error_response":{"code":"40002","msg":"Invalid Arguments","sub_code":"isv.code-invalid","sub_msg":"授权码code无效"}}';
+
+      sandbox.stub(sdk, 'checkResponseSign').returns(false);
+      sandbox.stub(sdk, "postString").resolves(response);
 
       sdk
         .exec('alipay.offline.material.image.upload', {
@@ -524,10 +491,6 @@ describe('sdk', function() {
     it('camelcase is false', function(done) {
       const filePath = path.join(__dirname, './fixtures/demo.jpg');
 
-      sandbox.stub(request, 'post', function({}, callback) {
-        return callback(null, {} , '{"alipay_offline_material_image_upload_response":{"code":"10000","msg":"Success","image_id":"mock_image_id","img_url":"mock_image_url"}}');
-      });
-
       const form = new FormData();
       form.addField('imageType', 'jpg');
       form.addField('imageName', '海底捞.jpg');
@@ -544,6 +507,9 @@ describe('sdk', function() {
         camelcase: false,
         timeout: 10000,
       })
+
+      const response = '{"alipay_offline_material_image_upload_response":{"code":"10000","msg":"Success","image_id":"mock_image_id","img_url":"mock_image_url"}}';
+      sandbox.stub(newSdk, "postString").resolves(response);
 
       newSdk
         .exec('alipay.offline.material.image.upload', {
@@ -573,9 +539,8 @@ describe('sdk', function() {
       form.addField('imageName', '海底捞.jpg');
       form.addFile('imageContent', '海底捞.jpg', filePath);
 
-      sandbox.stub(request, 'post', function({}, callback) {
-        return callback(null, {} , '{"alipay_offline_material_image_upload_response":{"code":"10000","msg":"Success","image_id":"u16noGtTSH-r9UI0FGmIfAAAACMAAQED","image_url":"https://oalipay-dl-django.alicdn.com/rest/1.0/image?fileIds=u16noGtTSH-r9UI0FGmIfAAAACMAAQED&zoom=original"}}');
-      })
+      const response = '{"alipay_offline_material_image_upload_response":{"code":"10000","msg":"Success","image_id":"u16noGtTSH-r9UI0FGmIfAAAACMAAQED","image_url":"https://oalipay-dl-django.alicdn.com/rest/1.0/image?fileIds=u16noGtTSH-r9UI0FGmIfAAAACMAAQED&zoom=original"}}';
+      sandbox.stub(sdk, "postString").resolves(response);
 
       sdk
         .exec('alipay.offline.material.image.upload', {
